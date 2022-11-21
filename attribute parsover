@@ -1,0 +1,249 @@
+#include <cmath>
+#include <cstdio>
+#include <vector>
+#include <iostream>
+#include <algorithm>
+using namespace std;
+
+typedef struct
+{
+    string strAttrName;
+    string strAttrVal;
+} xml_attribute;
+
+class xmlElement
+{
+    public:
+        xmlElement(string);
+        ~xmlElement();
+        
+        void setNextTag(xmlElement&);
+
+        string getTagName();
+        vector<xmlElement>& getChildList();
+        vector<xml_attribute>& getAttrList();
+        bool getTagStatus();
+        string getValueByKey(string);
+        xmlElement* getLastChildTag();
+        int getChildCount();
+        
+        void closeTag();
+        void addAttribute(string, string);
+    private:
+        string strName;
+        vector<xml_attribute> arrTagAttributes;
+        vector<xmlElement> o_nextTag;
+        bool bClosed;
+};
+
+xmlElement::xmlElement(string strTagName)
+{
+    this->strName = strTagName;
+    this->bClosed = 0;
+}
+xmlElement::~xmlElement() {}
+
+xmlElement globalTags("body");
+
+string xmlElement::getTagName()
+{
+    return this->strName;
+}
+
+vector<xmlElement>& xmlElement::getChildList()
+{
+    return this->o_nextTag;
+}
+
+vector<xml_attribute>& xmlElement::getAttrList()
+{
+    return this->arrTagAttributes;
+}
+
+void xmlElement::addAttribute(string strNewAttrName, string strNewAttrValue)
+{
+    xml_attribute newAttr;
+    newAttr.strAttrName = strNewAttrName;
+    newAttr.strAttrVal = strNewAttrValue;
+    this->getAttrList().push_back(newAttr);
+}
+
+string xmlElement::getValueByKey(string strKeyName)
+{
+    for (int i = 0; i < this->getAttrList().size(); i++) {
+        if (strKeyName == getAttrList()[i].strAttrName) {
+            return getAttrList()[i].strAttrVal;
+        }
+    }
+    return string("Not Found!");
+}
+
+void xmlElement::setNextTag(xmlElement& o_childElement)
+{
+    this->getChildList().push_back(o_childElement);
+}
+
+void xmlElement::closeTag()
+{
+    bClosed = 1;
+}
+
+string trim(string strParse)
+{
+    while (strParse.back() == '\n' || strParse.back() == '\0' || strParse.back() == ' ')
+    {
+        strParse.pop_back();
+    }
+    int i = 0;
+    while (strParse[i] == '\n' || strParse[i] == '\0' || strParse[i] == ' ')
+    {
+        i++;
+    }
+    return strParse.substr(i);
+}
+
+bool xmlElement::getTagStatus()
+{
+    return this->bClosed;
+}
+
+int xmlElement::getChildCount()
+{
+    return this->getChildList().size();
+}
+
+xmlElement* xmlElement::getLastChildTag()
+{
+    if (this->getChildCount() != 0)
+    {
+        return &getChildList().back();
+    }
+    else
+    {
+        return nullptr;
+    }
+}
+
+int closeLastElement(xmlElement* xmlTag)
+{
+    xmlElement* nextElement = xmlTag->getLastChildTag();
+    if (nextElement != nullptr  &&
+        !nextElement->getTagStatus() &&
+        xmlTag->getChildCount() != 0)
+    {
+        return closeLastElement(nextElement);
+    }
+    else {
+        xmlTag->closeTag();
+        return 1;
+    }
+}
+
+xmlElement* getLastParentTag(xmlElement* oParentTag)
+{
+    xmlElement* oChildTag = oParentTag->getLastChildTag();
+    if (oChildTag != nullptr && oChildTag->getTagStatus() == 0) {
+        return getLastParentTag(oChildTag);
+    }
+    else
+    {
+        return oParentTag;
+    }
+    
+}
+
+void xmlParseLine(string strInput)
+{
+    if (strInput[1] == '/') {
+        closeLastElement(globalTags.getLastChildTag());
+        return;
+    }
+    std::string::size_type separatorSpace = strInput.find(' ');
+    string strNewTagName;
+    
+    if (separatorSpace != std::string::npos)
+    {
+        strNewTagName = strInput.substr(1, separatorSpace);
+    }
+    else
+    {
+        strNewTagName = strInput.substr(1, strInput.find('>') - 1);
+        xmlElement oNewTag(strNewTagName);
+        getLastParentTag(&globalTags)->setNextTag(oNewTag);
+        return;
+    }
+    
+    xmlElement oNewTag(trim(strNewTagName));
+    getLastParentTag(&globalTags)->setNextTag(oNewTag);
+    
+    strInput = strInput.substr(strNewTagName.length());
+    
+    xmlElement* pLastElement = getLastParentTag(&globalTags);
+    while (strInput[0] != '>')
+    {
+        std::string::size_type separatorEqual = strInput.find('=');
+        string strAttrName = trim(strInput.substr(0, separatorEqual - 1));
+        
+        strInput = strInput.substr(strInput.find('"') + 1);
+        string strAttrVal = strInput.substr(0, strInput.find('"'));
+        
+        pLastElement->addAttribute(strAttrName, strAttrVal);
+ 
+        separatorSpace = strInput.find(' ');
+        
+        if (separatorSpace != std::string::npos)
+        {
+            strInput = strInput.substr(separatorSpace + 1);
+        }
+        else
+        {
+            break;
+        }
+    }
+}
+
+void queryParseLine(string strInput, xmlElement* pntr)
+{
+    //cout << trim(strInput) << endl;
+    if (strInput.find('~') == string::npos)
+    {
+        //pntr->getValueByKey(trim(strInput));
+        cout << pntr->getValueByKey(trim(strInput)) << endl;
+    }
+    else
+    {
+        string::size_type newPos = strInput.find('.');
+        if (newPos == string::npos) {
+            newPos = strInput.find('~');
+        }
+        string childName = strInput.substr(0, newPos);
+        bool bFound = 0;
+
+        for (int i = 0; i < pntr->getChildCount(); i++) {
+            if (childName == pntr->getChildList()[i].getTagName())
+            {
+                queryParseLine(strInput.substr(newPos + 1), &(pntr->getChildList()[i]));
+                return;
+            }
+        }
+        cout << "Not Found!" << endl;
+    }
+}
+
+int main() {
+    int iListing = 0, iQueries = 0;
+    scanf("%d %d\n", &iListing, &iQueries);
+    
+    for (int i = 0; i < iListing; i++) {
+        char inputString[201] = {0};
+        fgets(inputString, 200, stdin);
+        xmlParseLine(string(inputString));
+    }
+    
+    for (int i = 0; i < iQueries; i++) {
+        char inputString[201] = {0};
+        fgets(inputString, 200, stdin);
+        queryParseLine(string(inputString), &globalTags);
+    }
+    return 0;
+}
